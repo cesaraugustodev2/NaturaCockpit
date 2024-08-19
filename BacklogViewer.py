@@ -1,4 +1,5 @@
 import tkinter as tk
+
 from tkinter import ttk
 import pandas as pd
 import numpy as np
@@ -21,7 +22,7 @@ class BacklogViewer:
 
     def __init__(self, root):
         self.root = root #root é o objeto pai 
-        self.root.title("Cockpit da Operação 1.0")
+        self.root.title("Natura Cockpit 1.0")
         self.root.state('zoomed') #full screen
         #icones e imagem da Natura
         self.root.iconbitmap("img/icon.ico")
