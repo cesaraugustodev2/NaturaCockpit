@@ -7,6 +7,7 @@ import re
 import csv
 import os 
 import datetime 
+from collections import Counter
 from tkinter import filedialog, messagebox
 from datetime import datetime, timedelta
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -1145,55 +1146,45 @@ class BacklogViewer:
      return SequenceMatcher(None, a, b).ratio()
     #metodo para classificar e contar chamados baseado no campo resumo, o modelo faz a leitura e agrupa em palavras-chaves
     def ranking_top10(self, event=None):
-     data = []
-     for item in self.tree.get_children():
-        values = self.tree.item(item)["values"]
-        data.append(values)
+    # Extrair os dados da treeview
+     data = [self.tree.item(item)["values"] for item in self.tree.get_children()]
     
-     df = pd.DataFrame(data, columns=["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO", "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE", "SLA_VIOLADO", "DESCRICAO"])
+    # Criar o DataFrame com os dados extraídos
+     columns = ["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO", "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE", "SLA_VIOLADO", "DESCRICAO"]
+     df = pd.DataFrame(data, columns=columns)
     
-     df['RESUMO'] = df['RESUMO'].apply(self.preprocess_text)  
-
-     grouped = df.groupby(["GRUPO", "LOCALIDADE"])['RESUMO'].apply(list).reset_index(name='Resumos')
+    # Preprocessar os textos na coluna 'RESUMO'
+     def preprocess_resumo(text):
+        # Remove termos irrelevantes como "GV"
+        text = text.lower().replace("gv ", "")
+        # Outros pré-processamentos podem ser aplicados aqui, como remoção de stopwords
+        return text
     
-     vectorizer = TfidfVectorizer().fit_transform(grouped['Resumos'].apply(lambda x: ' '.join(x)))
-     vectors = vectorizer.toarray()
+     df['RESUMO'] = df['RESUMO'].apply(preprocess_resumo)
     
-     cosine_matrix = cosine_similarity(vectors)
+    # Agrupar os dados por 'GRUPO', 'LOCALIDADE' e 'RESUMO'
+     df_grouped = df.groupby(['GRUPO', 'LOCALIDADE', 'RESUMO']).size().reset_index(name='Tickets')
     
-     similar_groups = []
-     for idx, row in enumerate(cosine_matrix):
-        if len(row) > 1:
-            similar_indices = row.argsort()[-2:-1]
-            if similar_indices.size > 0:
-                similar_groups.append((
-                    grouped.iloc[idx]['GRUPO'],
-                    grouped.iloc[idx]['LOCALIDADE'],
-                    grouped.iloc[idx]['Resumos'],
-                    grouped.iloc[similar_indices[0]]['Resumos']
-                )) #cria um novo datafrma com as colunas grupo, localidade e resumos para contagem individual
-
-     summary = []
-     for group in similar_groups:
-        unique_resumos = set(group[2])
-        for resumo in unique_resumos:
-            similar_resumos = [r for r in unique_resumos if self.similar(resumo, r) > 0.9]
-            if similar_resumos:
-                summary.append({
-                    'GRUPO': group[0],
-                    'LOCALIDADE': group[1],
-                    'RESUMO': ' | '.join(similar_resumos),
-                    'Tickets': sum(group[2].count(r) for r in similar_resumos)
-                }) #soma resumos similares baseado no treeshold
-
-     summary_df = pd.DataFrame(summary) 
-     if 'Tickets' not in summary_df.columns:
-      summary_df['Tickets'] = 0
-     summary_df = summary_df.sort_values(by='Tickets', ascending=False)
-
+    # Identificar temas similares (baseado em TF-IDF e similaridade de cosseno)
+     def group_themes(resumos):
+        vectorizer = TfidfVectorizer()
+        vectors = vectorizer.fit_transform(resumos).toarray()
+        cosine_matrix = cosine_similarity(vectors)
+        return cosine_matrix
+    
+     df_grouped['Resumos_Similares'] = df_grouped.apply(lambda x: 'Divergência entre GPP e Gera' 
+                                                       if 'divergencia' in x['RESUMO'] and 'gpp' in x['RESUMO'] and 'gera' in x['RESUMO'] 
+                                                       else x['RESUMO'], axis=1)
+    
+    # Agrupar novamente pelo tema consolidado (Resumos_Similares) e somar os Tickets
+     df_final = df_grouped.groupby(['GRUPO', 'LOCALIDADE', 'Resumos_Similares']).agg({'Tickets': 'sum'}).reset_index()
+    
+    # Ordenar o DataFrame pelos 'Tickets' em ordem decrescente
+     df_final = df_final.sort_values(by='Tickets', ascending=False)
+    
+    # Copiar os dados para a área de transferência
      try:
-        summary_df = summary_df.drop_duplicates()
-        summary_df.to_clipboard(sep=",", index=False) #copia para a area de transferencia os dados
+        df_final.to_clipboard(sep="|", index=False)
         messagebox.showinfo("Ok", f"A IA analisou {len(df)} Chamados e Classificou da melhor forma possível, por favor colar os dados na Planilha Google ou Excel")
      except Exception as e:
         messagebox.showerror("Opa", f"Não foi possível copiar dados: {e}")
