@@ -454,8 +454,9 @@ class BacklogViewer:
             #mapa dos paises para facilitar a leitura
             self.df["LOCALIDADE"] = self.df["LOCALIDADE"].map({"BR": "Brasil", "CL": "Chile", "CO": "Colombia", "PE": "Peru", "AR-NAT": "Argentina", "MX": "México", "MY": "Malasia","":"Não Informado",np.nan:"Não informado","AR-AVON":"Argentina"})
             self.df["LOCALIDADE"] = self.df["LOCALIDADE"].astype('category')
-            self.df['SLA_VIOLADO'] = self.df['SLA_VIOLADO'].map({0: "Não Violado", 1: "Violado", 2:"Violado"}) #converte o campo SLA_Violado para um texto explicativo
-            self.df['TIPO'] = self.df['TIPO'].map({"ERRO":"Erro", "SOLICITAÇÃO":"Solicitação", "DÚVIDA":"Dúvida", "INDISPONIBILIDADE":"Indisponibilidade", "JOBS":"Jobs", "LENTIDÃO":"Lentidão", "MONITORAÇÃO":"Monitoração"})
+            self.df['SLA_VIOLADO'] = self.df['SLA_VIOLADO'].map({0: "Não Violado", 1: "Violado", 2:"Violado",3:"Violado",4:"Violado",5:"Violado"}) #converte o campo SLA_Violado para um texto explicativo
+            self.df['TIPO'] = self.df['TIPO'].map({"ERRO":"Erro", "SOLICITAÇÃO":"Solicitação", "DÚVIDA":"Dúvida", "INDISPONIBILIDADE":"Indisponibilidade", "JOBS":"Jobs", "LENTIDÃO":"Lentidão", "MONITORAÇÃO":"Monitoração","N/A":'Não Informado',np.nan:'Não Informado','':'Não Informado'})
+
             self.df["TIPO"] = self.df["TIPO"].astype('category')
             #cria os widgets combobox de filtro
             self.populate_status_filter()
