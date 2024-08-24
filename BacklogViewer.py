@@ -1,13 +1,29 @@
-import tkinter as tk
 
+#  Com a licença GNU General Public License (GPL) versão 3, o texto de copyright para o projeto **Natura Backlog** pode ser redigido da seguinte maneira:
+#
+#  ---
+#
+#  **Copyright © [2024] César Augusto. Todos os direitos reservados.**
+#
+#  Este projeto é licenciado sob a Licença Pública Geral GNU, versão 3 (GPL-3.0). Você é livre para usar, copiar, modificar e distribuir este software, desde que siga os termos da licença.
+#
+#
+#  - **Liberdade de Uso**: Você pode usar o software para qualquer propósito.
+#  - **Liberdade de Modificação**: Você pode modificar o software e distribuir suas modificações sob os mesmos termos.
+#  - **Liberdade de Distribuição**: Você pode distribuir cópias do software original ou modificado, garantindo que todos os destinatários tenham as mesmas liberdades que você recebeu.
+#
+#  Este software é fornecido "como está", sem garantia de qualquer tipo, expressa ou implícita, incluindo, mas não se limitando a garantias de comercialização ou adequação a um propósito específico.
+#
+#  Para mais informações, consulte o arquivo LICENSE incluído neste repositório.
+#
+#  ---
+
+import tkinter as tk
 from tkinter import ttk
 import pandas as pd
 import numpy as np
 import re
-import csv
-import os 
-import datetime 
-from collections import Counter
+import datetime
 from tkinter import filedialog, messagebox
 from datetime import datetime, timedelta
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -23,7 +39,7 @@ class BacklogViewer:
 
     def __init__(self, root):
         self.root = root #root é o objeto pai 
-        self.root.title("Natura Cockpit 1.0")
+        self.root.title("Natura Cockpit 1.1")
         self.root.state('zoomed') #full screen
         #icones e imagem da Natura
         self.root.iconbitmap("img/icon.ico")
@@ -586,7 +602,7 @@ class BacklogViewer:
         title="Exportar como Excel")
     
      if file_path:
-        
+
         data = []
         for item in self.tree.get_children():
             values = self.tree.item(item)["values"]
@@ -1097,20 +1113,16 @@ class BacklogViewer:
         messagebox.showwarning("Nenhum item selecionado", "Por favor, selecione um ou mais itens na tabela.")
         #metodo que exporta para xls chamados selecionados na arvore
     def export_to_excel_selected(self, event=None):
-      file_path = filedialog.asksaveasfilename(
-        defaultextension=".xlsx",
-        filetypes=[("Excel Files", "*.xlsx")],
-        title="Exportar Itens Selecionados")
-
-      if file_path:
+        selected_items = self.tree.selection()
+        data=[]
         for item in selected_items:
             values = self.tree.item(item)["values"]
             data.append(values)
         if len(data)>1:
             df = pd.DataFrame(data, columns=["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO", "STATUS","TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE", "SLA_VIOLADO", "DESCRICAO"])
             try:
-                df.to_excel(file_path, index=False, sheet_name='Selecionados')
-                messagebox.showinfo("Ok", f"Arquivo {file_path.title()} exportado com sucesso!")
+                df.to_clipboard()
+                messagebox.showinfo("Ok", f"{len(data)} Chamado(s) copiado(s) com sucesso, por favor colar no Google Planilhas!")
             except Exception as e:
                 messagebox.showerror("Erro", f"Ocorreu um erro ao exportar os dados: {str(e)}")
         else:
