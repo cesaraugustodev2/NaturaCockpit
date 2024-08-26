@@ -5,3 +5,12 @@
 .idea/misc.xml
 .idea/vcs.xml
 .idea/workspace.xml
+*.xml
+data.csv
+output/BacklogViewer/_internal/_asyncio.pyd
+output/BacklogViewer/_internal/_bz2.pyd
+output/BacklogViewer/_internal/_cffi_backend.cp312-win_amd64.pyd
+output/BacklogViewer/_internal/_ctypes.pyd
+output/BacklogViewer/_internal/_decimal.pyd
+output/BacklogViewer/_internal/_elementtree.pyd
+output/BacklogViewer/_internal/_hashlib.pyd
