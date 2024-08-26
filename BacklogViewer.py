@@ -19,6 +19,7 @@
 #  ---
 
 import tkinter as tk
+from logging import exception
 from tkinter import ttk
 import pandas as pd
 import numpy as np
@@ -38,7 +39,8 @@ class BacklogViewer:
     
 
     def __init__(self, root):
-        self.root = root #root é o objeto pai 
+        self.is_fullscreen = True
+        self.root = root #root é o objeto pai
         self.root.title("Natura Cockpit 1.1")
         self.root.state('zoomed') #full screen
         #icones e imagem da Natura
@@ -151,6 +153,10 @@ class BacklogViewer:
         filter_menu.add_separator()
         filter_menu.add_command(label="Sem Problem", command=self.filter_problemid)
         filter_menu.add_command(label="Com Problem", command=self.keep_problemid)
+        filter_menu.add_separator()
+        filter_menu.add_command(label="Só LATAM", command=self.filter_latam)
+        filter_menu.add_command(label="Só Brasil", command=self.filter_brasil)
+
         range_menu = tk.Menu(self.menu_bar)
         self.menu_bar.add_cascade(label="Analise Temporal", menu=range_menu,font=self.roman_font)
         #menu analise temporal
@@ -405,13 +411,16 @@ class BacklogViewer:
         y = (screen_height / 2) - (height / 2)
         self.root.geometry(f"{width}x{height}+{int(x)}+{int(y)}")
         #método para selecinar um tema (aparencia)
-    def dark_mode(self,event=None):
+    @staticmethod
+    def dark_mode(event=None):
          s=ttk.Style()
          s.theme_use('dark_orange') #tema custom (Natura Dark)
-    def clam_mode(self,event=None):
+    @staticmethod
+    def clam_mode(event=None):
          s=ttk.Style()
          s.theme_use('clam') # tema padrão do thinkter (Natura Retro)
-    def vista_mode(self,event=None):
+    @staticmethod
+    def vista_mode(event=None):
          s=ttk.Style()
          s.theme_use('vista') #tema default do windows (Natura Classico)
          
@@ -422,7 +431,6 @@ class BacklogViewer:
             self.is_fullscreen = False
         else:
             self.root.attributes("-fullscreen", True)
-            self.is_fullscreen = True
         #método para importar o backlog (caixa de dialogo)
     def upload_backlog(self, event=None):
          file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")]) #só é aceito arquivos csv separado por virgula
@@ -559,7 +567,7 @@ class BacklogViewer:
         self.root.clipboard_append(stats)
         messagebox.showinfo('Ok', 'Estatisticas copiadas por favor colar no bloco de notas Google Documentos')
      except Exception as e:
-         messagebox.showerror('Erro','Não foi Possível copiar os dados, por favor  tente novamente!')
+         messagebox.showerror('Erro',f'Não foi Possível copiar os dados, por favor  tente novamente! {e}')
         #popular as opçoes do combobox de filtro, de forma dinamica conforme o objeto self.df que foi instanciado anteriormenete
     def populate_status_filter(self):
         self.status_filter["values"] = ["Todos"] + self.df["STATUS"].unique().tolist()
@@ -596,21 +604,14 @@ class BacklogViewer:
             self.tree.item(item, tags=('selected',))
     #metod que exporta os chamados filtrados na arvore, invocado atraves do botão do menu "exportar fitrrados"
     def export_to_excel(self, event=None):
-     file_path = filedialog.asksaveasfilename(
-        defaultextension=".xlsx",
-        filetypes=[("Excel Files", "*.xlsx")],
-        title="Exportar como Excel")
-    
-     if file_path:
-
         data = []
         for item in self.tree.get_children():
             values = self.tree.item(item)["values"]
             data.append(values)
         df = pd.DataFrame(data, columns=["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO", "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE", "SLA_VIOLADO", "DESCRICAO"])
         try:
-            df.to_excel(file_path, index=False, sheet_name='Backlog')
-            messagebox.showinfo = ("Ok", f"Arquivo {file_path.title} Exportado com sucesso")
+            df.to_clipboard(index=False)
+            messagebox.showinfo = ("Ok", f"{len(df)} Chamado(s) copiado(s) com sucesso, por favor colar no Google Planilhas")
         except Exception as e:
             messagebox.showerror("Erro", f"Ocorreu um erro ao exportar os dados: {str(e)}")
     #logica dos filtros sao combinados e podem filtrar multiplas vezes depedendo das escolhas do usuário
@@ -682,7 +683,7 @@ class BacklogViewer:
      if problema:
             filtered_df = filtered_df[filtered_df["PROBLEMA"].str.contains(problema, case=False)]
             #caso o objeto filtrado não retorne resultado será exibido uma mensagem indicando que não há resultados
-     if len(filtered_df) == 0:
+     if len(filtered_df) < 1:
         messagebox.showinfo("Aviso", "Não foram encontrados resultados para os filtros selecionados")
      else: # caso exista será retornado no objeto filtered_df e atualiza a arvore e os dados de estatistica
       self.display_data(filtered_df)
@@ -753,7 +754,7 @@ class BacklogViewer:
             raise ValueError("No similar summaries found")
 
      except Exception as e:
-        messagebox.showinfo("Aviso", "Não foram encontrados chamados similares na base fornecida")
+        messagebox.showinfo("Aviso", f"Não foram encontrados chamados similares na base fornecida {e}" )
         #metodo que cria uma arvore de camados especial, que não irá respeitar os filtros se selecionados porém segue uma regra de escalation do N1:
         #Aging acima de 9 dias, sem problem atrelado e status diferente de resolvido
     def escalation_aging(self):
@@ -796,7 +797,7 @@ class BacklogViewer:
         (pd.to_datetime(self.df['DT_ABERTURA'], format='%d/%m/%Y') <= datetime.now())]
         self.display_data(filtered_df)
         self.update_info(filtered_df)
-     except Exception as e:
+     except Exception:
         messagebox.showinfo("Aviso", "Não há chamados D-1 na base fornecida")
     
     def aberto_dayminusseven(self):
@@ -809,7 +810,7 @@ class BacklogViewer:
     ]
         self.display_data(filtered_df)
         self.update_info(filtered_df)
-     except Exception as e:
+     except Exception:
         messagebox.showinfo("Aviso", "Não há chamados em  D-7 na base fornecida")
     
     def aberto_dayminusthirty(self):
@@ -821,7 +822,7 @@ class BacklogViewer:
         (pd.to_datetime(self.df['DT_ABERTURA'], format='%d/%m/%Y') <= datetime.now())]
         self.display_data(filtered_df)
         self.update_info(filtered_df)
-     except Exception as e:
+     except Exception:
         messagebox.showinfo("Aviso", "Não há chamados abertos em  D-30 em na base fornecida")
 
     def aberto_dayminussixty(self):
@@ -953,6 +954,35 @@ class BacklogViewer:
             self.display_data(filtered_df)
      except:
         messagebox.showinfo("Aviso", "Não foram encontrados chamados de hypercare MX na base fornecida")
+
+    def filter_latam(self, event=None):
+        try:
+            filtered_df = self.df
+            filtered_df = self.filter_data(self.df)
+            latam= ['Argentina','Chile','Colombia','Peru','México','Não Informado','Malásia']
+            filtered_df=filtered_df[filtered_df['LOCALIDADE'].isin(latam)] # Remove Brasil da lista
+            if len(filtered_df) == 0:
+                messagebox.showinfo("Aviso", "Não foram encontrados chamados LATAM na base fornecida")
+            else:
+                self.update_info(filtered_df)
+                self.display_data(filtered_df)
+        except Exception as e:
+            messagebox.showinfo("Aviso", f"Erro ao gerar filtros dos dados {e}")
+
+    def filter_brasil(self, event=None):
+        try:
+            filtered_df = self.df
+            filtered_df = self.filter_data(self.df)
+
+            filtered_df = filtered_df[filtered_df['LOCALIDADE'] == 'Brasil']
+            # Seleciona somente  Brasil da lista
+            if len(filtered_df) == 0:
+                messagebox.showinfo("Aviso", "Não foram encontrados chamados do Brasil na base fornecida")
+            else:
+                self.update_info(filtered_df)
+                self.display_data(filtered_df)
+        except Exception as e:
+            messagebox.showinfo("Aviso", f"Erro ao gerar filtros dos dados {e}")
 
     def hypercare_BR(self, event=None):
      try:
