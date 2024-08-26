@@ -473,8 +473,9 @@ class BacklogViewer:
             self.df["AGING_IN_DAYS"] = self.df["AGING_IN_DAYS"].astype(int) #converte a string para int para calculos
             self.df["GRUPO"] = self.df["GRUPO"].astype("category") #converte o tipo string para o tipo category do pandas
             #mapa dos status para facilitar a leitura
-            self.df["STATUS"] = self.df["STATUS"].astype(str).map({"Fechada":"Resolvido", "Resolvida":"Resolvido", "Cancelada":"Cancelado", "Aberta":"Aberto", "Em andamento":"Analise N2", "Aguardando resposta do usuário final":"Ag. usuário", "Aguardando fornecedor":"Ag. Forn", "Mudança em Andamento":"Ag.SM", "Reaberto":"Reaberto", "Aguardando Resposta do usuário final":"Ag.N1", "Aprovada":"Aprovada"})
+            self.df["STATUS"] = self.df["STATUS"].astype(str).map({"Fechada":"Resolvido", "Resolvida":"Resolvido", "Cancelada":"Cancelado", "Aberta":"Aberto", "Em andamento":"Analise N2", "Aguardando resposta do usuário final":"Ag. usuário", "Aguardando fornecedor":"Ag. Forn", "Mudança em Andamento":"Ag.SM", "Reaberto":"Reaberto", "Aguardando Resposta do usuário final":"Ag.N1", "Aprovada":"Aprovada",np.nan:"Aberto","":"Aberto"})
             self.df["STATUS"] = self.df["STATUS"].astype('category')
+            self.df["STATUS"] = self.df["STATUS"].dropna()
             #mapa dos paises para facilitar a leitura
             self.df["LOCALIDADE"] = self.df["LOCALIDADE"].map({"BR": "Brasil", "CL": "Chile", "CO": "Colombia", "PE": "Peru", "AR-NAT": "Argentina", "MX": "México", "MY": "Malasia","":"Não Informado",np.nan:"Não informado","AR-AVON":"Argentina"})
             self.df["LOCALIDADE"] = self.df["LOCALIDADE"].astype('category')
