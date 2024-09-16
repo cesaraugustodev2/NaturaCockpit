@@ -19,14 +19,18 @@
 #  ---
 
 import tkinter as tk
-from logging import exception
 from tkinter import ttk
+import matplotlib
+matplotlib.use("svg")
+import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import re
 import datetime
 from tkinter import filedialog, messagebox
 from datetime import datetime, timedelta
+import seaborn as sns
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from difflib import SequenceMatcher
@@ -134,7 +138,6 @@ class BacklogViewer:
         self.menu_bar.add_cascade(label="Backlog", menu=file_menu)
         file_menu.add_command(label="Importar Backlog", command=self.upload_backlog)
         file_menu.add_command(label="Exportar Filtrados", command=self.export_to_excel)
-        file_menu.add_command(label="Exportar Selecionados", command=self.export_to_excel_selected)
         file_menu.add_separator()
         file_menu.add_command(label="Sair", command=root.quit)
         #menu editar
@@ -145,9 +148,12 @@ class BacklogViewer:
         filter_menu = tk.Menu(self.menu_bar)
         self.menu_bar.add_cascade(label="Filtro Avançado", menu=filter_menu,font=self.roman_font)
         #menu filtros avançados
-        filter_menu.add_command(label="HyperCare Natura MX", command=self.hypercare_MX)
-        filter_menu.add_command(label="HyperCare ELO Fase", command=self.hypercare_BR)
         filter_menu.add_command(label="Escalation (Aging Alto)", command=self.escalation_aging)
+        filter_menu.add_separator()
+        filter_menu.add_command(label="HyperCare Colombia v3", command=self.hypercare_CO_V3)
+        filter_menu.add_command(label="HyperCare Natura MX", command=self.hypercare_MX)
+        filter_menu.add_command(label="HyperCare ELO Fase 2", command=self.hypercare_BR)
+        filter_menu.add_separator()
         filter_menu.add_command(label="Só Resolvidos", command=self.filter_fechado)
         filter_menu.add_command(label="Só Abertos", command=self.filter_abertos)
         filter_menu.add_separator()
@@ -171,6 +177,14 @@ class BacklogViewer:
         range_menu.add_command(label="Resolvidos D-30", command=self.fechado_dayminusthirty)
         range_menu.add_command(label="Resolvidos D-60", command=self.fechado_dayminussixty)
         range_menu.add_command(label="Resolvidos D-N", command=self.fechado_dayminuscustom)
+        self.chart_menu = tk.Menu(self.menu_bar)
+        self.menu_bar.add_cascade(label="Analise Visual", menu=self.chart_menu,font=self.roman_font)
+        self.chart_menu.add_command(label="Abertos x Dias",command=self.plot_graph_open_days)
+        self.chart_menu.add_command(label="Fechados x Dias", command=self.plot_graph_sol_days)
+        self.chart_menu.add_command(label="Distribuição x SLA", command=self.plot_graph_sla_dist)
+        self.chart_menu.add_command(label="Distribuição x Localidade", command=self.plot_graph_pais_dist)
+        self.chart_menu.add_command(label="Distribuição x Status", command=self.plot_graph_status_dist)
+        self.chart_menu.add_command(label="Distribuição x Categoria", command=self.plot_graph_categoria_dist)
         #menu ajuda
         self.help_menu = tk.Menu(self.menu_bar)
         self.menu_bar.add_cascade(label="Ajuda", menu=self.help_menu)
@@ -294,7 +308,6 @@ class BacklogViewer:
         self.root.bind("<Alt-c>", self.copy_chamado)
         self.root.bind("<Alt-p>", self.copy_problema)
         self.root.bind("<Control-s>", self.export_to_excel)
-        self.root.bind("<Control-e>", self.export_to_excel_selected)
         self.root.bind("<<TreeviewSelect>>", self.display_description)
         self.tree.bind('<<TreeviewSelect>>', self.on_select)
         self.root.bind("<Button-3>", popup_menu)
@@ -315,15 +328,13 @@ class BacklogViewer:
         m.add_command(label="Analisar ProblemID", command=self.locate_by_problem)
         m.add_command(label="Localizar Similares (Resumo)", command=self.locate_similar_resumo)
         m.add_command(label="Localizar Similares (Descrição)", command=self.locate_similar_desc)
-        m.add_command(label="Exportar Selecionados", command=self.export_to_excel_selected)
+        m.add_separator()
+        m.add_command(label="Exportar Estatisticas", command=self.handle_stats)
         m.add_separator()
         m.add_command(label="Copiar ChamadoID", command=self.copy_chamado)
         m.add_command(label="Copiar ProblemID", command=self.copy_problema)
         m.add_command(label="Copiar Resumo", command=self.copy_resumo)
         m.add_command(label="Copiar Descrição", command=self.copy_desc)
-        m.add_command(label="Exportar Estatisticas", command=self.handle_stats)
-        m.add_separator()
-        m.add_command(label="Fechar", command=root.destroy)
         #self.df é a lista de chamados imporadas sem qualquer filtro, referencia para os filtros e caso precise ler a lista full
         self.df = pd.DataFrame()
 
@@ -615,6 +626,7 @@ class BacklogViewer:
             messagebox.showinfo = ("Ok", f"{len(df)} Chamado(s) copiado(s) com sucesso, por favor colar no Google Planilhas")
         except Exception as e:
             messagebox.showerror("Erro", f"Ocorreu um erro ao exportar os dados: {str(e)}")
+
     #logica dos filtros sao combinados e podem filtrar multiplas vezes depedendo das escolhas do usuário
     def filter_data(self, event=None):
      terms1 = self.search_entry1.get()
@@ -766,7 +778,7 @@ class BacklogViewer:
         #metodo que faz uma analise temporal baseado em chamados abertos, ao longo de um intervalo de tempo conforme a variavel ndays receber do usuario
     def aberto_dayminuscustom(self):
      try:
-        ndays = tk.simpledialog.askinteger(title="Olá",
+        ndays = tk.simpledialog.askinteger(title="Natura Cockpit",
                                             prompt="Deseja ver o histórico de abertos de quantos dias?:")
         if ndays is None or ndays < 0:
             messagebox.showinfo("Aviso", "Por favor, insira um número válido de dias.")
@@ -840,7 +852,7 @@ class BacklogViewer:
         #metodo que faz uma analise temporal baseado em chamados resolvidos, ao longo de um intervalo de tempo conforme a variavel ndays receber do usuario
     def fechado_dayminuscustom(self):
      try:
-        ndays = tk.simpledialog.askinteger(title="Cockpit da Operação",
+        ndays = tk.simpledialog.askinteger(title="Natura Cockpit",
                                             prompt="Deseja ver o histórico de chamados resolvidos de quantos dias?:")
         if ndays is None or ndays < 0:
             messagebox.showinfo("Aviso", "Por favor, insira um número válido de dias.")
@@ -875,18 +887,31 @@ class BacklogViewer:
         self.update_info(filtered_df)
      except Exception as e:
         messagebox.showinfo("Aviso", "Não há chamados D-1 na base fornecida")
-    
+
     def fechado_dayminusseven(self):
-     try:
-        filtered_df=self.filter_data(self.df)
-        dayminus7 = datetime.now() - timedelta(days=8)
-        filtered_df = filtered_df[
-        (pd.to_datetime(self.df['DT_SOLUÇÃO'], format='%d/%m/%Y') >= dayminus7) & 
-        (pd.to_datetime(self.df['DT_SOLUÇÃO'], format='%d/%m/%Y') <= datetime.now()) ]
-        self.display_data(filtered_df)
-        self.update_info(filtered_df)
-     except Exception as e:
-        messagebox.showinfo("Aviso", "Não há chamados fechados em  D-7 na base fornecida")
+        try:
+            # Filter data as needed
+            filtered_df = self.filter_data(self.df)
+
+            # Calculate the date range
+            dayminus7 = datetime.now() - timedelta(days=7)
+
+            # Ensure to use the same DataFrame for filtering
+            filtered_df = filtered_df[
+                (pd.to_datetime(filtered_df['DT_SOLUÇÃO'], format='%d/%m/%Y') >= dayminus7) &
+                (pd.to_datetime(filtered_df['DT_SOLUÇÃO'], format='%d/%m/%Y') <= datetime.now())
+                ]
+
+            # Display and update information
+            self.display_data(filtered_df)
+            self.update_info(filtered_df)
+
+        except KeyError as e:
+            messagebox.showinfo("Aviso", f"Coluna não encontrada: {str(e)}")
+        except ValueError as e:
+            messagebox.showinfo("Aviso", f"Erro de valor: {str(e)}")
+        except Exception as e:
+            messagebox.showinfo("Aviso", "Não há chamados fechados em D-7 na base fornecida")
     
     def fechado_dayminusthirty(self):
      try:
@@ -955,6 +980,21 @@ class BacklogViewer:
             self.display_data(filtered_df)
      except:
         messagebox.showinfo("Aviso", "Não foram encontrados chamados de hypercare MX na base fornecida")
+
+    def hypercare_CO_V3(self, event=None):
+        try:
+            filtered_df = self.df
+            filtered_df = self.filter_data(self.df)
+            filtered_df = filtered_df[
+                (filtered_df['GRUPO'].str.contains('HC')) & (filtered_df['LOCALIDADE'] == "Colombia")]  # HC Natura MX
+
+            if len(filtered_df) == 0:
+                messagebox.showinfo("Aviso", "Não foram encontrados chamados de hypercare CO v3 na base fornecida")
+            else:
+                self.update_info(filtered_df)
+                self.display_data(filtered_df)
+        except:
+            messagebox.showinfo("Aviso", "Não foram encontrados chamados de hypercare MX na base fornecida")
 
     def filter_latam(self, event=None):
         try:
@@ -1143,22 +1183,327 @@ class BacklogViewer:
      else:
         messagebox.showwarning("Nenhum item selecionado", "Por favor, selecione um ou mais itens na tabela.")
         #metodo que exporta para xls chamados selecionados na arvore
-    def export_to_excel_selected(self, event=None):
-        selected_items = self.tree.selection()
-        data=[]
-        for item in selected_items:
-            values = self.tree.item(item)["values"]
+
+    def plot_graph_open_days(self):
+        data = []
+        tree = self.tree
+        for item in tree.get_children():
+            values = tree.item(item)["values"]
             data.append(values)
-        if len(data)>1:
-            df = pd.DataFrame(data, columns=["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO", "STATUS","TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE", "SLA_VIOLADO", "DESCRICAO"])
-            try:
-                df.to_clipboard()
-                messagebox.showinfo("Ok", f"{len(data)} Chamado(s) copiado(s) com sucesso, por favor colar no Google Planilhas!")
-            except Exception as e:
-                messagebox.showerror("Erro", f"Ocorreu um erro ao exportar os dados: {str(e)}")
-        else:
-            messagebox.showwarning("Aviso", "Nenhum item selecionado para exportar.")
-        #metodo que atualiza de forma dinamica, conforme a seleção os dados de SLA, RESUMO,  DESCRICAO e AGING
+
+        # Criação do DataFrame
+        df = pd.DataFrame(data, columns=["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO",
+                                         "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE",
+                                         "SLA_VIOLADO", "DESCRICAO"])
+        try:
+            # Agrupamento e contagem
+            group = df.groupby(by=['DT_ABERTURA', 'GRUPO']).size().reset_index(name='count')
+
+            # Conversão de 'DT_ABERTURA' para datetime
+            group['DT_ABERTURA'] = pd.to_datetime(group['DT_ABERTURA'], format='%d/%m/%Y')
+
+            # Ordenação das datas em ordem crescente
+            group = group.sort_values(by='DT_ABERTURA')
+
+            group['DT_ABERTURA']=group['DT_ABERTURA'].dt.strftime('%d/%m')
+
+            # Criação do subplot com n linhas e 1 coluna
+            unique_groups = group['GRUPO'].unique()
+            n_rows = len(unique_groups)
+            fig, axes = plt.subplots(nrows=n_rows, ncols=1, figsize=(15, 8 * n_rows))
+
+            # Verifica se há apenas um grupo para evitar erro de indexação
+            if n_rows == 1:
+                axes = [axes]
+
+            # Estilo do Seaborn
+            sns.set_theme(style="whitegrid")
+
+            # Criação dos gráficos individuais
+            for i, grp in enumerate(unique_groups):
+                data_grp = group[group['GRUPO'] == grp]
+                sns.barplot(x='DT_ABERTURA', y='count', data=data_grp, ax=axes[i], palette='Dark2', ci=None)
+                axes[i].set_title(f"Chamados Abertos - {grp}", fontsize=16)
+                axes[i].set_xlabel("Data", fontsize=14)
+                axes[i].set_ylabel("Chamados", fontsize=14)
+                axes[i].tick_params(axis='x', rotation=45)
+
+                # Linha de média
+                mean_value = data_grp['count'].mean()
+                axes[i].axhline(mean_value, color='r', linestyle='--', label='Média')
+
+                for p in axes[i].patches:
+                    axes[i].annotate(f'{int(p.get_height())}', (p.get_x() + p.get_width() / 2., p.get_height()),
+                                     ha='center', va='bottom', fontsize=10)
+                axes[i].legend(loc='upper left', fontsize=10)
+
+            plt.tight_layout()
+            plt.savefig("Abertos_x_Dias.svg",dpi=200)
+            plt.close() # Fecha a figura para economizar memória
+            messagebox.showinfo("Ok", "Gráfico salvo como svg na pasta do projeto")
+        except Exception as e:
+            print(e)
+
+    def plot_graph_sol_days(self):
+        data = []
+        tree = self.tree
+        for item in tree.get_children():
+            values = tree.item(item)["values"]
+            data.append(values)
+
+        # Criação do DataFrame
+        df = pd.DataFrame(data, columns=["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO",
+                                         "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE",
+                                         "SLA_VIOLADO", "DESCRICAO"])
+        try:
+            # Agrupamento e contagem
+            group = df.groupby(by=['DT_SOLUÇÃO', 'GRUPO']).size().reset_index(name='count')
+
+            # Conversão de 'DT_SOLUÇÃO' para datetime
+            group['DT_SOLUÇÃO'] = pd.to_datetime(group['DT_SOLUÇÃO'], format='%d/%m/%Y')
+
+            # Ordenação das datas em ordem crescente
+            group = group.sort_values(by='DT_SOLUÇÃO')
+            group['DT_SOLUÇÃO'] = group['DT_SOLUÇÃO'].dt.strftime('%d/%m')
+
+            # Criação do subplot com n linhas e 1 coluna
+            unique_groups = group['GRUPO'].unique()
+            n_rows = len(unique_groups)
+            fig, axes = plt.subplots(nrows=n_rows, ncols=1, figsize=(15, 8 * n_rows))
+
+            # Verifica se há apenas um grupo para evitar erro de indexação
+            if n_rows == 1:
+                axes = [axes]
+
+            # Estilo do Seaborn
+            sns.set_theme(style="whitegrid")
+
+            # Criação dos gráficos individuais
+            for i, grp in enumerate(unique_groups):
+                data_grp = group[group['GRUPO'] == grp]
+                sns.barplot(x='DT_SOLUÇÃO', y='count', data=data_grp, ax=axes[i], palette='Dark2', ci=None)
+                axes[i].set_title(f"Chamados Resolvidos - {grp}", fontsize=16)
+                axes[i].set_xlabel("Data", fontsize=14)
+                axes[i].set_ylabel("Chamados", fontsize=14)
+                axes[i].tick_params(axis='x', rotation=45)
+
+                # Linha de média
+                mean_value = data_grp['count'].mean()
+                axes[i].axhline(mean_value, color='r', linestyle='--', label='Média')
+
+
+                for p in axes[i].patches:
+                    axes[i].annotate(f'{int(p.get_height())}', (p.get_x() + p.get_width() / 2., p.get_height()),
+                                     ha='center', va='bottom', fontsize=10)
+                axes[i].legend(loc='upper left', fontsize=10)
+
+            plt.savefig("Resolvidos_x_Dias.svg",dpi=200)
+            plt.close()  # Fecha a figura para economizar memória
+            messagebox.showinfo("Ok", "Gráfico salvo como svg na pasta do projeto")
+        except Exception as e:
+            print(e)
+
+    def plot_graph_sla_dist(self):
+        data = []
+        tree = self.tree
+        for item in tree.get_children():
+            values = tree.item(item)["values"]
+            data.append(values)
+
+        # Criação do DataFrame
+        df = pd.DataFrame(data, columns=["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO",
+                                         "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE",
+                                         "SLA_VIOLADO", "DESCRICAO"])
+        try:
+            # Agrupamento e contagem
+            group = df.groupby(by=['SLA_VIOLADO', 'GRUPO']).size().reset_index(name='count')
+
+            # Criação do subplot com n linhas e 1 coluna
+            unique_groups = group['GRUPO'].unique()
+            n_rows = len(unique_groups)
+            fig, axes = plt.subplots(nrows=n_rows, ncols=1, figsize=(15, 8 * n_rows))
+
+            # Verifica se há apenas um grupo para evitar erro de indexação
+            if n_rows == 1:
+                axes = [axes]
+
+            # Criação dos gráficos de pizza individuais
+            for i, grp in enumerate(unique_groups):
+                data_grp = group[group['GRUPO'] == grp]
+                axes[i].pie(data_grp['count'], labels=data_grp['SLA_VIOLADO'], autopct='%1.1f%%', startangle=140)
+                axes[i].set_title(f"Distribuição de SLA - {grp}", fontsize=16)
+                axes[i].axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+                # Adicionando um quadro com a quantidade por país
+                # Definindo a posição para o quadro
+                x_pos = 1.1  # Posição x para o quadro
+                y_pos = 0.5 + (i * 0.1)  # Posição y para o quadro
+
+                # Adicionando texto com a quantidade por país
+                textstr = '\n'.join([f"{row['SLA_VIOLADO']}: {row['count']}" for _, row in data_grp.iterrows()])
+                axes[i].text(x_pos, y_pos, textstr, fontsize=8,bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+            plt.tight_layout()
+            plt.savefig("SLA_Distribuicao.svg")  # Salva todos os gráficos em um único arquivo svg
+            plt.close()  # Fecha a figura após salvar
+
+            messagebox.showinfo("Ok", "Gráficos de pizza salvos como svg na pasta do projeto")
+        except Exception as e:
+            print(e)
+
+    def plot_graph_pais_dist(self):
+        data = []
+        tree = self.tree
+        for item in tree.get_children():
+            values = tree.item(item)["values"]
+            data.append(values)
+
+        # Criação do DataFrame
+        df = pd.DataFrame(data, columns=["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO",
+                                         "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE",
+                                         "SLA_VIOLADO", "DESCRICAO"])
+        try:
+            # Agrupamento e contagem
+            group = df.groupby(by=['LOCALIDADE', 'GRUPO']).size().reset_index(name='count')
+
+            # Criação do subplot com n linhas e 1 coluna
+            unique_groups = group['GRUPO'].unique()
+            n_rows = len(unique_groups)
+            fig, axes = plt.subplots(nrows=n_rows, ncols=1, figsize=(10, 6 * n_rows))
+
+            # Verifica se há apenas um grupo para evitar erro de indexação
+            if n_rows == 1:
+                axes = [axes]
+
+            # Criação dos gráficos de pizza individuais
+            for i, grp in enumerate(unique_groups):
+                data_grp = group[group['GRUPO'] == grp]
+                axes[i].pie(data_grp['count'], labels=data_grp['LOCALIDADE'], autopct='%1.1f%%', startangle=140)
+                axes[i].set_title(f"Distribuição por Pais - {grp}", fontsize=12)
+                axes[i].axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+                # Adicionando um quadro com a quantidade por país
+                # Definindo a posição para o quadro
+                x_pos = 1.1 # Posição x para o quadro
+                y_pos = 0.7 + (i * 0.2)  # Posição y para o quadro
+
+                # Adicionando texto com a quantidade por país
+                textstr = '\n'.join([f"{row['LOCALIDADE']}: {row['count']}" for _, row in data_grp.iterrows()])
+                axes[i].text(x_pos, y_pos, textstr, fontsize=8,
+                             bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+            plt.tight_layout()
+            plt.savefig("Distribuição_pais.svg")  # Salva todos os gráficos em um único arquivo svg
+            plt.close()  # Fecha a figura após salvar
+
+            messagebox.showinfo("Ok", "Gráficos de pizza salvos como svg na pasta do projeto")
+        except Exception as e:
+            print(e)
+
+    def plot_graph_status_dist(self):
+        data = []
+        tree = self.tree
+        for item in tree.get_children():
+            values = tree.item(item)["values"]
+            data.append(values)
+
+        # Criação do DataFrame
+        df = pd.DataFrame(data, columns=["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO",
+                                         "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE",
+                                         "SLA_VIOLADO", "DESCRICAO"])
+        try:
+            # Agrupamento e contagem
+            group = df.groupby(by=['STATUS', 'GRUPO']).size().reset_index(name='count')
+
+            # Criação do subplot com n linhas e 1 coluna
+            unique_groups = group['GRUPO'].unique()
+            n_rows = len(unique_groups)
+            fig, axes = plt.subplots(nrows=n_rows, ncols=1, figsize=(10, 6 * n_rows))
+
+            # Verifica se há apenas um grupo para evitar erro de indexação
+            if n_rows == 1:
+                axes = [axes]
+
+            # Criação dos gráficos de pizza individuais
+            for i, grp in enumerate(unique_groups):
+                data_grp = group[group['GRUPO'] == grp]
+                axes[i].pie(data_grp['count'], labels=data_grp['STATUS'], autopct='%1.1f%%', startangle=140)
+                axes[i].set_title(f"Distribuição por Status - {grp}", fontsize=12)
+                axes[i].axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+                # Adicionando um quadro com a quantidade por país
+                # Definindo a posição para o quadro
+                x_pos = 1.1  # Posição x para o quadro
+                y_pos = 0.7 + (i * 0.2)  # Posição y para o quadro
+
+                # Adicionando texto com a quantidade por país
+                textstr = '\n'.join([f"{row['STATUS']}: {row['count']}" for _, row in data_grp.iterrows()])
+                axes[i].text(x_pos, y_pos, textstr, fontsize=8,
+                             bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+            plt.tight_layout()
+            plt.savefig("Distribuição_status.svg")  # Salva todos os gráficos em um único arquivo svg
+            plt.close()  # Fecha a figura após salvar
+
+            messagebox.showinfo("Ok", "Gráficos de pizza salvos como svg na pasta do projeto")
+        except Exception as e:
+            print(e)
+
+    def plot_graph_categoria_dist(self):
+        data = []
+        tree = self.tree
+        for item in tree.get_children():
+            values = tree.item(item)["values"]
+            data.append(values)
+
+        # Criação do DataFrame
+        df = pd.DataFrame(data, columns=["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO",
+                                         "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE",
+                                         "SLA_VIOLADO", "DESCRICAO"])
+        try:
+            # Agrupamento e contagem
+            group = df.groupby(by=['TIPO', 'GRUPO']).size().reset_index(name='count')
+            # Filtrando as linhas que contêm "Erro", "Solicitação" ou "Dúvida"
+            filtro = group['TIPO'].str.contains('Erro') | group['TIPO'].str.contains('Solicitação') | group[
+                'TIPO'].str.contains('Dúvida') | group[
+                'TIPO'].str.contains('Jobs')
+            group = group[filtro]
+
+            # Criação do subplot com n linhas e 1 coluna
+            unique_groups = group['GRUPO'].unique()
+            n_rows = len(unique_groups)
+            fig, axes = plt.subplots(nrows=n_rows, ncols=1, figsize=(10, 6 * n_rows))
+
+            # Verifica se há apenas um grupo para evitar erro de indexação
+            if n_rows == 1:
+                axes = [axes]
+
+            # Criação dos gráficos de pizza individuais
+            for i, grp in enumerate(unique_groups):
+                data_grp = group[group['GRUPO'] == grp]
+                axes[i].pie(data_grp['count'], labels=data_grp['TIPO'], autopct='%1.1f%%', startangle=140)
+                axes[i].set_title(f"Distribuição por Categoria de Ticket - {grp}", fontsize=12)
+                axes[i].axis('equal')  # Equal aspect ratio ensures that pie is drawn as a circle.
+
+                # Adicionando um quadro com a quantidade por país
+                # Definindo a posição para o quadro
+                x_pos = 1.2  # Posição x para o quadro
+                y_pos = 0.5 + (i * 0.2)  # Posição y para o quadro
+
+                # Adicionando texto com a quantidade por país
+                textstr = '\n'.join([f"{row['TIPO']}: {row['count']}" for _, row in data_grp.iterrows()])
+                axes[i].text(x_pos, y_pos, textstr, fontsize=8,
+                             bbox=dict(boxstyle='round', facecolor='white', alpha=0.5))
+
+            plt.tight_layout()
+            plt.savefig("Distribuição_tipo_ticket.svg")  # Salva todos os gráficos em um único arquivo svg
+            plt.close()  # Fecha a figura após salvar
+
+            messagebox.showinfo("Ok", "Gráficos de pizza salvos como svg na pasta do projeto")
+        except Exception as e:
+            print(e)
+
+
+
     def display_description(self, event=None):
      selected_item = self.tree.selection()[0]
      row_data = self.tree.item(selected_item, 'values')
@@ -1190,50 +1535,172 @@ class BacklogViewer:
      return SequenceMatcher(None, a, b).ratio()
     #metodo para classificar e contar chamados baseado no campo resumo, o modelo faz a leitura e agrupa em palavras-chaves
     def ranking_top10(self, event=None):
-    # Extrair os dados da treeview
-     data = [self.tree.item(item)["values"] for item in self.tree.get_children()]
-    
-    # Criar o DataFrame com os dados extraídos
-     columns = ["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO", "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE", "SLA_VIOLADO", "DESCRICAO"]
-     df = pd.DataFrame(data, columns=columns)
-    
-    # Preprocessar os textos na coluna 'RESUMO'
-     def preprocess_resumo(text):
-        # Remove termos irrelevantes como "GV"
-        text = text.lower().replace("gv ", "")
-        # Outros pré-processamentos podem ser aplicados aqui, como remoção de stopwords
-        return text
-    
-     df['RESUMO'] = df['RESUMO'].apply(preprocess_resumo)
-    
-    # Agrupar os dados por 'GRUPO', 'LOCALIDADE' e 'RESUMO'
-     df_grouped = df.groupby(['GRUPO', 'LOCALIDADE', 'RESUMO']).size().reset_index(name='Tickets')
-    
-    # Identificar temas similares (baseado em TF-IDF e similaridade de cosseno)
-     def group_themes(resumos):
-        vectorizer = TfidfVectorizer()
-        vectors = vectorizer.fit_transform(resumos).toarray()
-        cosine_matrix = cosine_similarity(vectors)
-        return cosine_matrix
-    
-     df_grouped['Resumos_Similares'] = df_grouped.apply(lambda x: 'Divergência entre GPP e Gera' 
-                                                       if 'divergencia' in x['RESUMO'] and 'gpp' in x['RESUMO'] and 'gera' in x['RESUMO'] 
-                                                       else x['RESUMO'], axis=1)
-    
-    # Agrupar novamente pelo tema consolidado (Resumos_Similares) e somar os Tickets
-     df_final = df_grouped.groupby(['GRUPO', 'LOCALIDADE', 'Resumos_Similares']).agg({'Tickets': 'sum'}).reset_index()
-    
-    # Ordenar o DataFrame pelos 'Tickets' em ordem decrescente
-     df_final = df_final.sort_values(by='Tickets', ascending=False)
-    
-    # Copiar os dados para a área de transferência
-     try:
-        df_final.to_clipboard(sep="|", index=False)
-        messagebox.showinfo("Ok", f"A IA analisou {len(df)} Chamados e Classificou da melhor forma possível, por favor colar os dados na Planilha Google ou Excel")
-     except Exception as e:
-        messagebox.showerror("Opa", f"Não foi possível copiar dados: {e}")
-    
-    
+        # Extrair os dados da treeview
+        data = [self.tree.item(item)["values"] for item in self.tree.get_children()]
+
+        # Criar o DataFrame com os dados extraídos
+        columns = ["DT_ABERTURA", "DT_SOLUÇÃO", "CHAMADO", "PROBLEMA", "GRUPO",
+                   "STATUS", "TIPO", "RESUMO", "AGING_IN_DAYS", "LOCALIDADE",
+                   "SLA_VIOLADO", "DESCRICAO"]
+        df = pd.DataFrame(data, columns=columns)
+
+        # Preprocessar os textos na coluna 'RESUMO'
+        def preprocess_resumo(text):
+            stopwords = set(['a', 'à', 'adeus', 'agora', 'aí', 'ainda', 'além', 'algo', 'alguém', 'algum', 'alguma', 'algumas', 'alguns', 'ali', 'alô', 'também', 'tampouco', 'tanta', 'tantas', 'tanto', 'tão', 'tarde', 'te', 'tem', 'têm', 'temos', 'tendes', 'tendo', 'tenha', 'tenham', 'tenhamos', 'tenho', 'tens', 'ter', 'terá', 'terão', 'terceira', 'terceiro', 'terei', 'teremos', 'teria', 'teríamos', 'teriam', 'teu', 'teus', 'teve', 'tinha', 'tinham', 'tínhamos', 'tive', 'tiver', 'tivera', 'tivéramos', 'tiveram', 'tivesse', 'tivéssemos', 'tivessem', 'tiveste', 'tivestes', 'tu', 'tua', 'tuas', 'tudo', 'último', 'última', 'últimas', 'últimos', 'um', 'uma', 'umas', 'uns', 'vendo', 'ver', 'verdade', 'verdadeiro', 'vez', 'vezes', 'vindo', 'vir', 'vós', 'vossa', 'vossas', 'vosso', 'vossos','a', 'ante', 'bajo', 'cabe', 'con', 'contra', 'de', 'del', 'desde', 'durante', 'e', 'el', 'en', 'entre', 'hacia', 'hasta', 'la', 'las', 'lo', 'los', 'mediante', 'para', 'por', 'según', 'sin', 'so', 'sobre', 'tras', 'y'])  # Lista de stopwords conforme definido anteriormente
+
+            # Remove termos irrelevantes como "GV"
+            text = text.lower().replace("gv ", "")
+
+            # Remove caracteres especiais e números
+            text = re.sub(r'[^a-zá-ú\s]', '', text)
+
+            # Tokeniza o texto e remove stopwords
+            filtered_words = [word for word in text.split() if word not in stopwords]
+
+            return ' '.join(filtered_words)
+
+        df['RESUMO'] = df['RESUMO'].apply(preprocess_resumo)
+
+        # Agrupar os dados por 'GRUPO', 'LOCALIDADE' e 'RESUMO'
+        df_grouped = df.groupby(['GRUPO', 'LOCALIDADE', 'RESUMO']).size().reset_index(name='Tickets')
+
+        # Identificar temas similares
+        df_grouped['Resumos_Similares'] = df_grouped.apply(
+            lambda x: 'Divergência entre GPP e Gera'
+            if 'divergencia' in x['RESUMO'] and 'gpp' in x['RESUMO'] and 'gera' in x['RESUMO']
+            else x['RESUMO'], axis=1
+        )
+
+        # Agrupar novamente pelo tema consolidado e somar os Tickets
+        df_final = df_grouped.groupby(['GRUPO', 'LOCALIDADE', 'Resumos_Similares']).agg(
+            {'Tickets': 'sum'}).reset_index()
+
+        # Criação do conteúdo HTML
+        html_content = self.create_html_document(df_final)
+
+        # Salvar o conteúdo HTML em um único arquivo
+        try:
+            with open("Top_Ofensores_Grupo.html", "w", encoding="utf-8") as f:
+                f.write(html_content)
+
+            messagebox.showinfo("Ok",
+                                f"A IA analisou {len(df)} Chamados e gerou o arquivo HTML com as tabelas dos 3 maiores resumos similares por grupo.")
+        except Exception as e:
+            messagebox.showerror("Opa", f"Não foi possível gerar o arquivo HTML: {e}")
+
+    def create_html_document(self, data):
+        # Início do documento HTML
+        html_document = """<!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Top Ofensores por Grupo</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: #f4f4f4;
+                    margin: 0;
+                    padding: 20px;
+                }}
+                h1 {{
+                    color: #333;
+                    text-align: center;
+                    margin-bottom: 30px;
+                }}
+                .container {{
+                    max-width: 800px;
+                    margin: auto;
+                    background: #fff;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+                }}
+                table {{
+                    border-collapse: collapse;
+                    width: 100%;
+                    margin-bottom: 20px;
+                }}
+                th, td {{
+                    border: 1px solid #ddd;
+                    padding: 12px;
+                    text-align: left;
+                }}
+                th {{
+                    background-color: #4CAF50;
+                    color: white;
+                }}
+                tr:nth-child(even) {{
+                    background-color: #f9f9f9;
+                }}
+                tr:hover {{
+                    background-color: #f1f1f1;
+                }}
+                @media (max-width: 600px) {{
+                    table {{
+                        font-size: 14px;
+                    }}
+                    th, td {{
+                        padding: 10px;
+                    }}
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <h1>Top Ofensores por Grupo</h1>
+        """
+
+        # Obter grupos únicos
+        unique_groups = data['GRUPO'].unique()
+
+        # Adicionar tabelas para cada grupo
+        for group in unique_groups:
+            group_data = data[data['GRUPO'] == group]
+            table_html = self.create_html_table(group_data, group)
+            html_document += table_html
+
+        # Finalizar o documento HTML
+        html_document += """
+            </div>
+            </body>
+            </html>
+        """
+
+        return html_document
+
+    def create_html_table(self, data, group):
+        # Cabeçalho da tabela
+        header = "<tr><th>Localidade</th><th>Ofensor</th><th>Tickets</th></tr>"
+
+        # Função para escapar caracteres especiais
+        def escape_html(text):
+            return (text.replace("&", "&amp;")
+                    .replace("<", "&lt;")
+                    .replace(">", "&gt;")
+                    .replace('"', "&quot;")
+                    .replace("'", "&apos;"))
+
+        # Linhas da tabela
+        rows = "".join(
+            f"<tr><td>{escape_html(row['LOCALIDADE'])}</td><td>{escape_html(row['Resumos_Similares'])}</td><td>{row['Tickets']}</td></tr>"
+            for _, row in data.nlargest(10, 'Tickets').iterrows()
+        )
+
+        # Estrutura da tabela HTML
+        table_html = f"""
+        <h2>Grupo: {group}</h2>
+        <table>
+            <thead>
+                {header}
+            </thead>
+            <tbody>
+                {rows}
+            </tbody>
+        </table>
+        """
+
+        return table_html
 
     #popups sobre o projeto e sobre o manual do usuario
     def help_popup(self,event=None):
@@ -1241,7 +1708,8 @@ class BacklogViewer:
 
     def manual_popup(self,event=None):
      messagebox.showinfo("Manual","Esse projeto possui um guia de usuário que pode ser acessado em PDF, dentro da pasta do projeto e no drive da sustentação. Obrigado!")
-   
+
+
 
 if __name__ == "__main__":
     root = tk.Tk()
